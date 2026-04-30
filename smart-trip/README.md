@@ -79,6 +79,111 @@ claude mcp add -s user smart-trip -- node "D:/Projects/mcp-server/smart-trip/dis
 - **写入成功但 React UI 看不到**：`DEFAULT_USER_ID` 不是你登录账号的 UID，去 Supabase Auth 页面对一下。
 - **想反悔**：`claude mcp remove -s user smart-trip` 注销。
 
+## 远程部署（Phase 1：HTTP + Tailscale Funnel）
+
+把 MCP 从本地 stdio 升级成"办公室一台 24/7 Linux VM 跑 HTTP，Claude.ai web/mobile 通过 Tailscale Funnel 调用"。这样 Claude Code 不用挂 smart-trip MCP（解放 context），出门也能用。
+
+### 架构
+
+```
+办公室 Proxmox 主机
+└── Linux VM
+    ├── Node + smart-trip MCP HTTP server（监听 127.0.0.1:3001）
+    ├── systemd 守护
+    └── tailscale daemon (现有 tailnet)
+            │
+            └─ tailscale serve + funnel
+                    │
+                    ↓
+   公网 https://<vm-name>.<tailnet>.ts.net
+                    │
+                    │  HTTPS + Bearer token
+                    │
+   ┌────────────────┼────────────────────┐
+Claude Code     Claude.ai 网页       Claude.ai 手机
+（任何机器）    （任何浏览器）        （中文打字）
+```
+
+### 一次性部署步骤（Linux VM 上，~1 小时）
+
+```bash
+# 1. 系统准备（Debian 12 / Ubuntu 24.04）
+sudo apt update && sudo apt install -y curl git
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
+curl -fsSL https://tailscale.com/install.sh | sudo bash
+sudo tailscale up                # 浏览器登录加入 tailnet
+
+# 2. 部署用户和目录
+sudo useradd -r -s /usr/sbin/nologin -d /opt/mcp-servers mcp
+sudo mkdir -p /opt/mcp-servers && sudo chown mcp:mcp /opt/mcp-servers
+sudo -u mcp git clone https://github.com/showbox88/mcp-servers.git /opt/mcp-servers
+
+# 3. 安装 smart-trip
+cd /opt/mcp-servers/smart-trip
+sudo -u mcp cp .env.example .env
+sudo -u mcp nano .env            # 填 SUPABASE_SERVICE_ROLE_KEY / DEFAULT_USER_ID / MCP_BEARER_TOKEN
+sudo -u mcp npm install
+sudo -u mcp npm run build
+
+# 生成 bearer token（如果没填）
+openssl rand -hex 32             # 复制粘进 .env 的 MCP_BEARER_TOKEN
+
+# 4. 启动 systemd 服务
+sudo cp systemd/smart-trip-mcp.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now smart-trip-mcp
+sudo systemctl status smart-trip-mcp        # 应显示 active (running)
+curl -s http://127.0.0.1:3001/healthz       # 应返回 {"ok":true,"service":"smart-trip-mcp","tools":15}
+
+# 5. Tailscale Funnel 暴露公网
+sudo tailscale serve --bg --https=443 http://localhost:3001
+sudo tailscale funnel --bg 443
+sudo tailscale funnel status                # 看到 https://<vm-name>.<tailnet>.ts.net
+
+# 6. 公网验证
+curl https://<vm-name>.<tailnet>.ts.net/healthz
+```
+
+### 注册到 Claude.ai（要求 Pro / Max / Team）
+
+1. 打开 https://claude.ai → 右下角头像 → **Settings** → **Connectors**
+2. **Add custom connector**
+3. 填：
+   - **Name**：`smart-trip`
+   - **Server URL**：`https://<vm-name>.<tailnet>.ts.net/mcp`
+   - **Authentication**：Bearer Token，粘贴 `.env` 里的 `MCP_BEARER_TOKEN`
+4. 保存。新对话里说"列出我所有的行程"应能调通。
+
+### 注册到 Claude Code（HTTP 模式，可选）
+
+如果想从某台 Claude Code 远程用同一份 HTTP 服务（不再启本地 stdio）：
+
+```bash
+claude mcp remove -s user smart-trip       # 先移除 stdio 版（如有）
+claude mcp add --transport http -s user smart-trip \
+  https://<vm-name>.<tailnet>.ts.net/mcp \
+  -H "Authorization: Bearer <token>"
+```
+
+### 日常运维
+
+| 操作 | 命令 |
+|---|---|
+| 看日志 | `sudo journalctl -u smart-trip-mcp -f` |
+| 重启 | `sudo systemctl restart smart-trip-mcp` |
+| 升级（拉新工具） | `cd /opt/mcp-servers && sudo -u mcp git pull && cd smart-trip && sudo -u mcp npm install && sudo -u mcp npm run build && sudo systemctl restart smart-trip-mcp` |
+| 旋转 token | 改 `.env` 的 `MCP_BEARER_TOKEN` → `systemctl restart` → Claude.ai connector 设置同步更新 |
+| 关 funnel | `sudo tailscale funnel --bg 443 off` |
+
+### 安全注意
+
+- **bearer token 是唯一的访问控制**——泄露 = 任何人能读写你 Smart Trip 数据。立刻旋转。
+- **service_role 在 VM 内**，不出户；这是不上 Vercel/Fly 的核心收益
+- **/healthz 不带 auth**，但只回固定 JSON，不泄露任何东西
+- Funnel 流量限制：免费个人版 1000GB/月，远超个人用量
+- VM 防火墙不需要开 inbound 端口——Funnel 出方向打洞
+
 ## 设计要点
 
 - **id 格式**：`trip-${Date.now()}` / `day-${Date.now()}-${rand}` —— 与 Smart Trip React 端一致

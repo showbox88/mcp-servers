@@ -2,26 +2,14 @@
 import { config as loadEnv } from 'dotenv';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { registerTripTools } from './tools/trips.js';
-import { registerDayTools } from './tools/days.js';
-import { registerStopTools } from './tools/stops.js';
-import { registerPlaceTools } from './tools/places.js';
+import { setupServer } from './setupServer.js';
 
 // Load .env from package root (one level above dist/), so `node dist/index.js` works regardless of cwd
 const here = dirname(fileURLToPath(import.meta.url));
 loadEnv({ path: resolve(here, '..', '.env') });
 
-const server = new McpServer({
-  name: 'smart-trip',
-  version: '0.1.0',
-});
-
-registerTripTools(server);
-registerDayTools(server);
-registerStopTools(server);
-registerPlaceTools(server);
+const server = setupServer();
 
 async function main() {
   const transport = new StdioServerTransport();

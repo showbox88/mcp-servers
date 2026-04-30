@@ -8,8 +8,10 @@ Claude Code 的 MCP server 集合。每个子目录 = 一个 app 的工具暴露
 
 | 目录 | 用途 | 状态 |
 |---|---|---|
-| `smart-trip/` | Smart Trip 行程数据读写（直连 Supabase） | 一期，15 个工具 |
+| `smart-trip/` | Smart Trip 行程数据读写（直连 Supabase） | 一期，15 个工具，stdio + HTTP 双入口 |
 | `_template/` | 新 MCP 复制模板 | 模板 |
+
+> Phase 1 部署架构（办公室 Proxmox Linux VM + Tailscale Funnel）：见 `smart-trip/README.md` 的"远程部署"章节。
 
 > 后续 app（Voice / 音乐 / 价格追踪 / …）按 `_template` 套路加兄弟目录。
 

@@ -1,0 +1,45 @@
+# Systemd unit for smart-trip MCP server (HTTP entry).
+#
+# Install on the office VM:
+#   sudo cp systemd/smart-trip-mcp.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now smart-trip-mcp
+#   sudo journalctl -u smart-trip-mcp -f         # tail logs
+#
+# Adjust User= and WorkingDirectory= to match your deploy.
+# The service binds to 127.0.0.1 only — exposure is via `tailscale serve`/`tailscale funnel`.
+
+[Unit]
+Description=Smart Trip MCP server (HTTP)
+Documentation=https://github.com/showbox88/mcp-servers
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mcp
+Group=mcp
+WorkingDirectory=/opt/mcp-servers/smart-trip
+ExecStart=/usr/bin/node dist/server.js
+Restart=on-failure
+RestartSec=5s
+
+# .env in WorkingDirectory provides SUPABASE_URL / SERVICE_ROLE / DEFAULT_USER_ID / MCP_BEARER_TOKEN
+EnvironmentFile=/opt/mcp-servers/smart-trip/.env
+
+# Hardening — service only needs to read its own dir + reach the network
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/mcp-servers/smart-trip
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+
+# stdout/stderr → journald
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
