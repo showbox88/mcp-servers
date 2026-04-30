@@ -1,0 +1,30 @@
+{
+  "name": "smart-trip-mcp",
+  "version": "0.1.0",
+  "description": "MCP server exposing Smart Trip itinerary data to Claude Code via Supabase service role.",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "smart-trip-mcp": "dist/index.js"
+  },
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "smoke": "node dist/index.js < smoke-input.txt"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@supabase/supabase-js": "^2.99.2",
+    "dotenv": "^16.4.5",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
