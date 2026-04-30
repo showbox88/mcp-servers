@@ -6,3 +6,6 @@ dist/
 smoke-stderr.log
 .DS_Store
 Thumbs.db
+
+# Per-machine Claude Code local settings (permissions etc.)
+.claude/settings.local.json

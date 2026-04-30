@@ -84,6 +84,28 @@ export const removeStopShape = {
   stop_index: z.number().int().min(0),
 } as const;
 
+export const reorderStopsShape = {
+  day_id: z.string(),
+  from_index: z.number().int().min(0).describe('Current position of the stop'),
+  to_index: z.number().int().min(0).describe('Target position. Indices refer to the array BEFORE the move.'),
+} as const;
+
+export const addStopsBulkShape = {
+  day_id: z.string(),
+  stops: z.array(stopShape).min(1).describe('Stops appended in the given order'),
+} as const;
+
+export const cloneTripShape = {
+  source_trip_id: z.string().describe('Trip to clone'),
+  new_title: z.string().min(1).describe('Title for the cloned trip'),
+  new_start_date: z
+    .string()
+    .describe(
+      'YYYY-MM-DD. All days are shifted by (new_start_date - source.start_date) so dates do not collide with the source. REQUIRED — days_v2 has UNIQUE(user_id, date), so cloning to overlapping dates would conflict.',
+    ),
+  new_thumb: z.string().url().optional().describe('Cover image URL for the new trip; defaults to source.thumb'),
+} as const;
+
 export const searchPlacesShape = {
   query: z.string().min(1).describe('Place name or address fragment'),
   limit: z.number().int().min(1).max(50).optional().default(10),

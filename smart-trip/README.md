@@ -2,23 +2,29 @@
 
 让 Claude Code 直接读写你 Smart Trip 数据的 MCP server。绕过 React UI，直连 Supabase（service role）。
 
-## 暴露的工具（12 个）
+## 暴露的工具（15 个）
 
 | 类别 | 工具 |
 |---|---|
-| 行程 | `list_trips` `get_trip` `create_trip` `update_trip` `delete_trip` |
+| 行程 | `list_trips` `get_trip` `create_trip` `update_trip` `delete_trip` `clone_trip` |
 | 天数 | `add_day_to_trip` `update_day` `remove_day` |
-| 站点 | `add_stop` `update_stop` `remove_stop` |
+| 站点 | `add_stop` `add_stops_bulk` `update_stop` `remove_stop` `reorder_stops` |
 | 地点 | `search_places` |
+
+新增工具说明：
+- **`clone_trip(source_trip_id, new_title, new_start_date, new_thumb?)`** — 复制行程到新日期。所有 days 按 `new_start_date - source.start_date` 偏移；stops_data 深拷贝、stop id 重新生成；新 days 是独立行（不共用 source）。如果新日期跟你已有的 days_v2 行冲突（UNIQUE user_id+date）会失败并报告冲突日期。
+- **`add_stops_bulk(day_id, stops[])`** — 一次追加 N 个站点，单次 Supabase 写入。
+- **`reorder_stops(day_id, from_index, to_index)`** — 在同一天内移动站点位置。索引以移动前的数组为准。
 
 > 当前只读写 v2 数据（`trips.trip_data IS NULL`），不碰老的 v1 行程。
 
 ## 安装
 
 ```bash
-cd E:/Project/mcp-servers/smart-trip
+cd <仓库路径>/smart-trip   # 家用 PC: E:/Project/mcp-servers/smart-trip
+                           # 办公室 PC: D:/Projects/mcp-server/smart-trip
 cp .env.example .env
-# 编辑 .env 填入三个值（见下面）
+# 编辑 .env 填入两个值（见下面 — SUPABASE_URL 已预填）
 npm install
 npm run build
 ```
@@ -35,14 +41,19 @@ npm run build
 
 ## 注册到 Claude Code
 
-在 PowerShell 或终端跑：
+在 PowerShell 或终端跑（按机器替换绝对路径）：
 
 ```powershell
+# 家用 PC
 claude mcp add -s user smart-trip -- node "E:/Project/mcp-servers/smart-trip/dist/index.js"
+
+# 办公室 PC
+claude mcp add -s user smart-trip -- node "D:/Projects/mcp-server/smart-trip/dist/index.js"
 ```
 
 > `-s user` = 用户级（所有项目都能用），不带 `-s` 是项目本地。
 > `--` 之后是子进程命令；node 必须在 PATH。
+> 多机情况下两台机器各自注册一次，写入各自 `~/.claude.json`，路径独立。
 
 确认：`claude mcp list` 看到 `smart-trip`，再 `claude mcp get smart-trip` 看到 ✓ Connected。
 

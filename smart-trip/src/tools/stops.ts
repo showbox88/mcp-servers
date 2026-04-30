@@ -1,6 +1,12 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { getSupabase } from '../supabase.js';
-import { addStopShape, updateStopShape, removeStopShape } from '../schemas.js';
+import {
+  addStopShape,
+  updateStopShape,
+  removeStopShape,
+  reorderStopsShape,
+  addStopsBulkShape,
+} from '../schemas.js';
 
 function ok(text: string) {
   return { content: [{ type: 'text' as const, text }] };
@@ -96,6 +102,63 @@ export function registerStopTools(server: McpServer) {
       if (writeErr) return fail(`remove_stop write error: ${writeErr}`);
 
       return ok(JSON.stringify({ removed, total_stops: stops.length }, null, 2));
+    },
+  );
+
+  server.tool(
+    'reorder_stops',
+    'Move a stop within a day from from_index to to_index. Both indices refer to the array BEFORE the move (so move first to last in 4-stop day = from=0, to=3).',
+    reorderStopsShape,
+    async ({ day_id, from_index, to_index }) => {
+      const { stops, error } = await loadStops(day_id);
+      if (!stops) return fail(`reorder_stops: ${error}`);
+
+      if (from_index < 0 || from_index >= stops.length) {
+        return fail(`reorder_stops: from_index ${from_index} out of range (0..${stops.length - 1})`);
+      }
+      if (to_index < 0 || to_index >= stops.length) {
+        return fail(`reorder_stops: to_index ${to_index} out of range (0..${stops.length - 1})`);
+      }
+      if (from_index === to_index) {
+        return ok(JSON.stringify({ noop: true, stops_count: stops.length }, null, 2));
+      }
+
+      const [moved] = stops.splice(from_index, 1);
+      stops.splice(to_index, 0, moved);
+
+      const writeErr = await writeStops(day_id, stops);
+      if (writeErr) return fail(`reorder_stops write error: ${writeErr}`);
+
+      return ok(
+        JSON.stringify(
+          { moved, from_index, to_index, order: stops.map((s: any) => s.location) },
+          null,
+          2,
+        ),
+      );
+    },
+  );
+
+  server.tool(
+    'add_stops_bulk',
+    'Append multiple stops to a day in one call. All stops are appended in the given order; ids are auto-generated if absent. Single round-trip to Supabase.',
+    addStopsBulkShape,
+    async ({ day_id, stops: incoming }) => {
+      const { stops, error } = await loadStops(day_id);
+      if (!stops) return fail(`add_stops_bulk: ${error}`);
+
+      const added = incoming.map((s) => ({
+        id: s.id ?? `stop-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        ...s,
+      }));
+      stops.push(...added);
+
+      const writeErr = await writeStops(day_id, stops);
+      if (writeErr) return fail(`add_stops_bulk write error: ${writeErr}`);
+
+      return ok(
+        JSON.stringify({ added_count: added.length, total_stops: stops.length, added }, null, 2),
+      );
     },
   );
 }
