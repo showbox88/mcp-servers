@@ -42,8 +42,8 @@ app.get('/healthz', (_req, res) => {
   res.json({ ok: true, service: 'smart-trip-mcp', tools: 15 });
 });
 
-// MCP endpoint — bearer-protected
-app.post('/mcp', bearerAuth(TOKEN), async (req, res) => {
+// MCP endpoint handler — runs after auth middleware
+const mcpHandler = async (req: express.Request, res: express.Response) => {
   try {
     const server = setupServer();
     const transport = new StreamableHTTPServerTransport({
@@ -68,10 +68,21 @@ app.post('/mcp', bearerAuth(TOKEN), async (req, res) => {
       });
     }
   }
-});
+};
+
+// Two routes accepted (same handler, same auth):
+//   POST /mcp                — token via Authorization header (Claude Code, curl)
+//   POST /mcp/<token>        — token via URL path  (Claude.ai connector UI workaround)
+app.post('/mcp', bearerAuth(TOKEN), mcpHandler);
+app.post('/mcp/:token', bearerAuth(TOKEN), mcpHandler);
 
 // Reject GET/DELETE /mcp explicitly (stateless mode doesn't support them)
 app.all('/mcp', (_req, res) => {
+  res
+    .status(405)
+    .json({ jsonrpc: '2.0', error: { code: -32000, message: 'Method not allowed' }, id: null });
+});
+app.all('/mcp/:token', (_req, res) => {
   res
     .status(405)
     .json({ jsonrpc: '2.0', error: { code: -32000, message: 'Method not allowed' }, id: null });
