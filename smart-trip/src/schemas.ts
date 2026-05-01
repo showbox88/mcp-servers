@@ -64,10 +64,20 @@ export const removeDayShape = {
 export const stopShape = z.object({
   id: z.string().optional(),
   type: z
-    .string()
+    .enum(['location', 'hotel_checkin', 'activity', 'note', 'list'])
     .optional()
     .describe(
-      '"location" (real venue) / "hotel_checkin" / "activity" (paid/booked) / "note" (reminder, default not counted) / "list"',
+      [
+        'EXACTLY one of: "location" / "hotel_checkin" / "activity" / "note" / "list".',
+        '"event" is NOT a valid type — for free-form events use type="note" with isEvent=true.',
+        'Picking guide:',
+        '  - real venue (restaurant/museum/store): "location"',
+        '  - hotel arrival: "hotel_checkin"',
+        '  - paid or booked service (tour/ticket/reservation/SPA): "activity"',
+        '  - free informal happening (sunset, road trip moment, no specific place): "note" + isEvent=true',
+        '  - reminder / pre-trip checklist item: "note" (leave isEvent unset)',
+        '  - candidate group / shortlist: "list"',
+      ].join(' '),
     ),
   location: z.string().describe('Place name or note title (UI shows this as the card heading)'),
   lat: z.number().optional(),
