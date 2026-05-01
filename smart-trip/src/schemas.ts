@@ -47,10 +47,29 @@ export const removeDayShape = {
 } as const;
 
 // stops_data JSONB 数组里每个 stop 的形状（参考 docs/database_migration_plan.md 的 stops 表字段）
+//
+// type 说明（影响 Smart Trip UI 的"X Stops"计数器）：
+//   - "location"      — 有店面/地标的具体地点（餐厅、博物馆、商店）。算 stop。
+//   - "hotel_checkin" — 酒店入住。算 stop。
+//   - "activity"      — 付费/预订的服务（导游、门票、SPA、餐厅预订）。算 stop。
+//   - "note"          — 备忘条目，**默认不算 stop**（视为 reminder）。
+//                       如果是真正的"事件"（路上感想、看日落、喂猫等无具体店面但确实
+//                       发生过的事），可设 isEvent=true 让它算 stop。但通常 LLM 调用
+//                       时**不要主动设 isEvent**——让用户在 UI 上自己决定。
+//   - "list"          — 候选/分组（备选餐厅清单）。不算 stop。
+//
+// content 字段说明：
+//   - type='note' 时 UI 渲染的正文是 `content` 字段（**不是** note 或 desc）。
+//   - type='location' / 'activity' 等需要描述时用 `desc`。
 export const stopShape = z.object({
   id: z.string().optional(),
-  type: z.string().optional().describe('"location" / "note" / "list" / "hotel_checkin"'),
-  location: z.string().describe('Place name or note title'),
+  type: z
+    .string()
+    .optional()
+    .describe(
+      '"location" (real venue) / "hotel_checkin" / "activity" (paid/booked) / "note" (reminder, default not counted) / "list"',
+    ),
+  location: z.string().describe('Place name or note title (UI shows this as the card heading)'),
   lat: z.number().optional(),
   lng: z.number().optional(),
   placeId: z.string().optional().describe('Google Places place_id'),
@@ -61,8 +80,22 @@ export const stopShape = z.object({
   time: z.string().optional(),
   period: z.string().optional(),
   price: z.union([z.string(), z.number()]).optional(),
-  note: z.string().optional(),
-  desc: z.string().optional(),
+  note: z.string().optional().describe('Short label / quick tag (legacy field, prefer `content` for note bodies)'),
+  desc: z.string().optional().describe('Long description body — used for type=location/activity/hotel_checkin'),
+  content: z
+    .string()
+    .optional()
+    .describe('Note body — REQUIRED for type=note. Smart Trip UI renders this as the note text.'),
+  checked: z
+    .boolean()
+    .optional()
+    .describe('Checklist state for type=note (default false). UI may render notes as todo items.'),
+  isEvent: z
+    .boolean()
+    .optional()
+    .describe(
+      'Only meaningful for type=note. true = this note represents a real event (counted in "X Stops"). false/missing = reminder (not counted). LLM should usually leave this unset and let the user toggle it in the UI.',
+    ),
   address: z.string().optional(),
   phone: z.string().optional(),
   transitMode: z.enum(['DRIVE', 'WALK', 'TRANSIT']).optional(),
@@ -82,6 +115,14 @@ export const updateStopShape = {
 export const removeStopShape = {
   day_id: z.string(),
   stop_index: z.number().int().min(0),
+} as const;
+
+export const setNoteEventShape = {
+  day_id: z.string(),
+  stop_index: z.number().int().min(0).describe('Index of the note in stops_data'),
+  is_event: z
+    .boolean()
+    .describe('true = count this note in "X Stops" (real event). false = reminder, not counted.'),
 } as const;
 
 export const reorderStopsShape = {

@@ -6,6 +6,7 @@ import {
   removeStopShape,
   reorderStopsShape,
   addStopsBulkShape,
+  setNoteEventShape,
 } from '../schemas.js';
 
 function ok(text: string) {
@@ -44,7 +45,23 @@ async function writeStops(day_id: string, stops: any[]): Promise<string | null> 
 export function registerStopTools(server: McpServer) {
   server.tool(
     'add_stop',
-    'Append a stop to days_v2.stops_data JSONB array. The stop is read-modify-written — single-user-only safe.',
+    [
+      'Append a stop to days_v2.stops_data JSONB array.',
+      '',
+      'Type semantics (these affect Smart Trip UI counting):',
+      '  - "location": real venue with address (restaurant, museum). Set placeId/lat/lng if known.',
+      '  - "hotel_checkin": hotel arrival.',
+      '  - "activity": paid or booked service (tour, ticket, reservation, class).',
+      '  - "note": reminder/memo — DEFAULTS to NOT counted as a stop. For free-form events',
+      '    (sunset views, road trip moments, no specific venue) the user toggles it to "event"',
+      '    in the UI. As an LLM, leave isEvent unset by default — let the human decide.',
+      '  - "list": candidate group / shortlist.',
+      '',
+      'Field mapping for note bodies: put the body text in `content`, NOT in `note` or `desc`.',
+      'Smart Trip UI renders type=note from the `content` field.',
+      '',
+      'Read-modify-write — single-user-only safe (concurrent writes may lose updates).',
+    ].join('\n'),
     addStopShape,
     async ({ day_id, stop }) => {
       const { stops, error } = await loadStops(day_id);
@@ -158,6 +175,46 @@ export function registerStopTools(server: McpServer) {
 
       return ok(
         JSON.stringify({ added_count: added.length, total_stops: stops.length, added }, null, 2),
+      );
+    },
+  );
+
+  server.tool(
+    'set_note_event',
+    [
+      'Toggle the isEvent flag on a type=note stop.',
+      '',
+      'When isEvent=true, the note IS counted in Smart Trip UI as a "stop" (used for free-form',
+      'events with no specific venue: sunset, beach walk, in-flight moment).',
+      'When isEvent=false (or unset), it stays a reminder — visible but not counted.',
+      '',
+      'Errors if the stop at stop_index is not type=note.',
+    ].join('\n'),
+    setNoteEventShape,
+    async ({ day_id, stop_index, is_event }) => {
+      const { stops, error } = await loadStops(day_id);
+      if (!stops) return fail(`set_note_event: ${error}`);
+
+      if (stop_index < 0 || stop_index >= stops.length) {
+        return fail(`set_note_event: stop_index ${stop_index} out of range (0..${stops.length - 1})`);
+      }
+      if (stops[stop_index].type !== 'note') {
+        return fail(
+          `set_note_event: stop at index ${stop_index} is type=${stops[stop_index].type}, only type=note supports isEvent`,
+        );
+      }
+
+      stops[stop_index] = { ...stops[stop_index], isEvent: is_event };
+
+      const writeErr = await writeStops(day_id, stops);
+      if (writeErr) return fail(`set_note_event write error: ${writeErr}`);
+
+      return ok(
+        JSON.stringify(
+          { day_id, stop_index, isEvent: is_event, stop: stops[stop_index] },
+          null,
+          2,
+        ),
       );
     },
   );
