@@ -37,9 +37,16 @@ if (!TOKEN || TOKEN.length < 32) {
 const app = express();
 app.use(express.json({ limit: '4mb' }));
 
-// Health check (no auth) — handy for systemd / uptime probes
+// Health check (no auth) — handy for systemd / uptime probes.
+// Tool count is computed once at startup by probing a fresh server instance.
+const TOOL_COUNT = (() => {
+  const probe = setupServer();
+  const count = Object.keys((probe as any)._registeredTools ?? {}).length;
+  probe.close().catch(() => {});
+  return count;
+})();
 app.get('/healthz', (_req, res) => {
-  res.json({ ok: true, service: 'smart-trip-mcp', tools: 15 });
+  res.json({ ok: true, service: 'smart-trip-mcp', tools: TOOL_COUNT });
 });
 
 // MCP endpoint handler — runs after auth middleware
