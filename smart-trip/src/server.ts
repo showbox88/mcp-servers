@@ -15,6 +15,7 @@ import { config as loadEnv } from 'dotenv';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import express from 'express';
+import { existsSync } from 'node:fs';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { setupServer } from './setupServer.js';
 import { bearerAuth } from './auth.js';
@@ -36,6 +37,31 @@ if (!TOKEN || TOKEN.length < 32) {
 
 const app = express();
 app.use(express.json({ limit: '4mb' }));
+
+// Static media serving — exposes /opt/music as /audio/*.
+// Used as a quick streaming endpoint for music MCP experiments. Express's
+// static middleware handles HTTP Range requests automatically (essential for
+// audio seek). Files are public — anyone with the URL can stream. For now
+// security comes from filenames being non-guessable, not auth. Don't put
+// sensitive content here.
+//
+// MIME types: express.static maps .mp3 → audio/mpeg from its built-in db.
+//
+// TODO when this graduates to its own MCP: split into a dedicated music server,
+// add path-token auth, build a proper MP3 index with metadata.
+const MEDIA_DIR = process.env.MCP_MEDIA_DIR ?? '/opt/music';
+if (existsSync(MEDIA_DIR)) {
+  app.use(
+    '/audio',
+    express.static(MEDIA_DIR, {
+      acceptRanges: true,
+      cacheControl: true,
+      maxAge: '1h',
+      fallthrough: false,
+    }),
+  );
+  console.error(`[smart-trip-mcp] serving /audio from ${MEDIA_DIR}`);
+}
 
 // Health check (no auth) — handy for systemd / uptime probes.
 // Tool count is computed once at startup by probing a fresh server instance.
