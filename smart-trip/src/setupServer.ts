@@ -3,7 +3,7 @@ import { registerTripTools } from './tools/trips.js';
 import { registerDayTools } from './tools/days.js';
 import { registerStopTools } from './tools/stops.js';
 import { registerPlaceTools } from './tools/places.js';
-import { registerAudioTools } from './tools/audio.js';
+import { registerMusicTools } from './tools/music.js';
 
 /**
  * Build a fresh McpServer with all 15 smart-trip tools registered.
@@ -25,7 +25,7 @@ export function setupServer(): McpServer {
   registerDayTools(server);
   registerStopTools(server);
   registerPlaceTools(server);
-  registerAudioTools(server);
+  registerMusicTools(server);
 
   return server;
 }
