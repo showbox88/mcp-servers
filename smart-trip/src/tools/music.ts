@@ -30,7 +30,8 @@ interface Track {
   album: string;
   duration_sec: number | null;
   size_bytes: number;
-  url: string;            // public playback URL
+  url: string;            // PRIMARY playback URL — deep-link into music-station UI
+  audio_url: string;      // raw MP3 stream URL (fallback / direct download)
 }
 
 const MUSIC_DIR = process.env.MCP_MEDIA_DIR ?? '/opt/music';
@@ -44,10 +45,17 @@ function getPublicBase(): string {
   return u.replace(/\/+$/, '');
 }
 
-function buildUrl(relPath: string): string {
-  // Encode each segment so Chinese / spaces / special chars survive
+function buildAudioUrl(relPath: string): string {
+  // Raw MP3 stream URL. Encode each path segment so CJK/spaces survive.
   const encoded = relPath.split('/').map(encodeURIComponent).join('/');
   return `${getPublicBase()}/audio/${encoded}`;
+}
+
+function buildAppUrl(relPath: string): string {
+  // Deep link into music-station's web UI. The app reads ?play=<rel_path>
+  // on mount, looks up the track, and opens the custom NowPlaying view.
+  // Whole rel_path is encoded once as a query value (keep slashes intact).
+  return `${getPublicBase()}/app/?play=${encodeURIComponent(relPath)}`;
 }
 
 function trackIdFromPath(relPath: string): string {
@@ -114,7 +122,8 @@ async function scanLibrary(): Promise<{ count: number; failed: number }> {
       album,
       duration_sec: duration,
       size_bytes: st.size,
-      url: buildUrl(rel),
+      url: buildAppUrl(rel),
+      audio_url: buildAudioUrl(rel),
     });
   }
 
@@ -163,10 +172,17 @@ export function registerMusicTools(server: McpServer) {
     [
       'Search the local music library (parsed from ID3 tags).',
       'Matches against title / artist / album / path (case-insensitive substring).',
-      'Returns the top N matches as objects with title, artist, album, duration_sec, url.',
+      'Returns the top N matches as objects with title, artist, album, duration_sec, url, audio_url.',
       '',
-      'The `url` field is a direct streamable MP3 URL the user can click to play in browser.',
-      'Render results to the user as a markdown list of clickable links — one per song.',
+      'URL fields:',
+      '  - `url`        — DEEP LINK into the music-station web app. Clicking opens',
+      '                   our custom Now Playing view (vinyl + transport controls).',
+      '                   PREFER THIS when rendering links to the user.',
+      '  - `audio_url`  — Raw MP3 stream URL. Use only when the user explicitly',
+      '                   asks to download / embed / share the bare audio file.',
+      '',
+      'Render results to the user as a markdown list of clickable links using `url` —',
+      'one per song. Example: "▶ [Song Title — Artist](url)".',
     ].join('\n'),
     {
       query: z.string().min(1).describe('Free-text query, e.g. "周杰伦", "稻香", "夜曲专辑"'),
